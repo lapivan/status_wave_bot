@@ -1,0 +1,1 @@
+BOT_TOKEN = "8365250544:AAHsFyVkoFO0eOL1rfF4GEFbCXd5NcELyeQ" #токен связь с ботом
