@@ -1,3 +1,5 @@
+# database.py
+
 import aiosqlite
 
 DB_NAME = 'bot.db'
@@ -9,6 +11,7 @@ async def create_tables():
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
                 current_text_status TEXT,
+                current_voice_status_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -18,32 +21,49 @@ async def create_tables():
 async def add_user(user_id: int, username: str):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
-            'INSERT OR REPLACE INTO users (user_id, username) VALUES (?, ?)',
+            'INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)',
             (user_id, username)
         )
         await db.commit()
-        print(f"✅ Пользователь добавлен/обновлен: {user_id} (@{username})")
+        print(f"✅ Пользователь добавлен: {user_id} (@{username})")
 
 async def update_user_text_status(user_id: int, username: str, text_status: str):
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute('SELECT 1 FROM users WHERE user_id = ?', (user_id,))
-        exists = await cursor.fetchone()
-        await cursor.close()
-        
-        if not exists:
-            await db.execute(
-                'INSERT INTO users (user_id, username, current_text_status) VALUES (?, ?, ?)',
-                (user_id, username, text_status)
-            )
-            print(f"✅ Создан пользователь {user_id} (@{username}) со статусом: {text_status}")
-        else:
-            await db.execute(
-                'UPDATE users SET current_text_status = ?, username = ? WHERE user_id = ?',
-                (text_status, username, user_id)
-            )
-            print(f"✅ Статус обновлен для {user_id} (@{username}): {text_status}")
-        
+        await db.execute(
+            'UPDATE users SET current_text_status = ?, username = ? WHERE user_id = ?',
+            (text_status, username, user_id)
+        )
         await db.commit()
+        print(f"✅ Текстовый статус обновлен для {user_id} (@{username}): {text_status}")
+
+async def update_user_voice_status(user_id: int, username: str, voice_message_id: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            'UPDATE users SET current_voice_status_id = ?, username = ? WHERE user_id = ?',
+            (voice_message_id, username, user_id)
+        )
+        await db.commit()
+        print(f"✅ Голосовой статус обновлен для {user_id} (@{username})")
+
+async def get_user_status(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            'SELECT current_text_status FROM users WHERE user_id = ?',
+            (user_id,)
+        )
+        result = await cursor.fetchone()
+        await cursor.close()
+        return result[0] if result else None
+
+async def get_user_voice_status(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            'SELECT current_voice_status_id FROM users WHERE user_id = ?',
+            (user_id,)
+        )
+        result = await cursor.fetchone()
+        await cursor.close()
+        return result[0] if result else None
 
 async def get_user_status_by_username(username: str):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -51,36 +71,49 @@ async def get_user_status_by_username(username: str):
             'SELECT user_id, current_text_status FROM users WHERE username = ?',
             (username,)
         )
-        user_data = await cursor.fetchone()
+        result = await cursor.fetchone()
         await cursor.close()
-        print(f"🔍 Поиск по username: {username}, найдено: {user_data}")
-        return user_data
+        return result
 
-async def get_user_status(user_id: int):
+async def get_user_voice_status_by_username(username: str):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
-            'SELECT user_id, username, current_text_status FROM users WHERE user_id = ?',
-            (user_id,)
+            'SELECT user_id, current_voice_status_id FROM users WHERE username = ?',
+            (username,)
         )
         result = await cursor.fetchone()
         await cursor.close()
-        
-        if result:
-            user_id, username, status = result
-            print(f"🔍 Найден пользователь: ID: {user_id}, Username: {username}, Status: '{status}'")
-            return status
-        else:
-            print(f"🔍 Пользователь {user_id} не найден в БД")
-            return None
+        return result
 
-async def clear_user_status(user_id: int):
+async def clear_text_status(user_id: int):
+    """Очищаем только текстовый статус"""
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
             'UPDATE users SET current_text_status = NULL WHERE user_id = ?',
             (user_id,)
         )
         await db.commit()
-        print(f"✅ Статус очищен для {user_id}")
+        print(f"✅ Текстовый статус очищен для {user_id}")
+
+async def clear_voice_status(user_id: int):
+    """Очищаем только голосовой статус"""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            'UPDATE users SET current_voice_status_id = NULL WHERE user_id = ?',
+            (user_id,)
+        )
+        await db.commit()
+        print(f"✅ Голосовой статус очищен для {user_id}")
+
+async def clear_all_statuses(user_id: int):
+    """Очищаем все статусы"""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            'UPDATE users SET current_text_status = NULL, current_voice_status_id = NULL WHERE user_id = ?',
+            (user_id,)
+        )
+        await db.commit()
+        print(f"✅ Все статусы очищены для {user_id}")
 
 async def debug_print_all_users():
     async with aiosqlite.connect(DB_NAME) as db:
@@ -89,5 +122,5 @@ async def debug_print_all_users():
         await cursor.close()
         print("=== DEBUG: ВСЕ ПОЛЬЗОВАТЕЛИ В БД ===")
         for user in all_users:
-            print(f"ID: {user[0]}, Username: {user[1]}, Status: '{user[2]}'")
+            print(f"ID: {user[0]}, Username: {user[1]}, Text: '{user[2]}', Voice: '{user[3]}'")
         print("===================================")
