@@ -1,8 +1,6 @@
-# handlers.py
-
 from aiogram import Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command, StateFilter
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import database as db
@@ -12,7 +10,6 @@ router = Router()
 class UserState(StatesGroup):
     waiting_for_status = State()
 
-# Reply-клавиатура с командами (простой вариант)
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="📄 Установить статус")],
@@ -21,10 +18,9 @@ main_keyboard = ReplyKeyboardMarkup(
         [KeyboardButton(text="❓ Помощь")]
     ],
     resize_keyboard=True,
-    input_field_placeholder="Выбери действие..."
+    input_field_placeholder="Выберите действие..."
 )
 
-# Обработчик текста кнопок
 @router.message(F.text.in_(["📄 Установить статус", "📊 Мой статус", "🗑️ Очистить статус", "❓ Помощь"]))
 async def handle_button_text(message: Message, state: FSMContext):
     text = message.text
@@ -38,7 +34,6 @@ async def handle_button_text(message: Message, state: FSMContext):
     elif text == "❓ Помощь":
         await cmd_help(message)
 
-# Обработчик команды /start
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     user_id = message.from_user.id
@@ -47,8 +42,8 @@ async def cmd_start(message: Message):
     
     await message.answer(
         "Привет! Я StatusWave Bot 🤖\n"
-        "Я помогу тебе устанавливать статусы, которые будут автоматически отвечать твоим друзьям.\n\n"
-        "📋 Доступные команды:\n"
+        "Я помогу тебе устанавливать крутые статусы, которые будут автоматически отвечать твоим друзьям.\n\n"
+        "📋 Доступные действия:\n"
         "📄 Установить статус\n"
         "📊 Мой статус\n"
         "🗑️ Очистить статус\n"
@@ -62,10 +57,10 @@ async def cmd_help(message: Message):
     help_text = (
         "🤖 StatusWave Bot - Помощь\n\n"
         "Как работает бот:\n"
-        "1. Установи статус командой /set_text\n"
+        "1. Установи статус (кнопка '📄 Установить статус')\n"
         "2. Добавь меня в группу\n"
         "3. Когда тебя упомянут (@твой_ник), я автоматически отвечу твоим статусом!\n\n"
-        "📋 Команды:\n\n"
+        "📋 Команды:\n"
         "/set_text - Установить новый текстовый статус\n"
         "/my_status - Посмотреть текущий статус\n"
         "/clear_status - Удалить текущий статус\n"
@@ -86,13 +81,13 @@ async def cmd_my_status(message: Message):
 @router.message(Command("clear_status"))
 async def cmd_clear_status(message: Message):
     user_id = message.from_user.id
-    await db.update_user_text_status(user_id, None)
+    await db.clear_user_status(user_id)
     await message.answer("✅ Твой статус успешно удален!", reply_markup=main_keyboard)
 
 @router.message(Command("set_text"))
 async def cmd_set_text(message: Message, state: FSMContext):
     await message.answer(
-        "Отлично! Напиши мне новый статус:",
+        "Отлично! Напиши мне новый текстовый статус, который я буду отправлять твоим друзьям:",
         reply_markup=ReplyKeyboardMarkup(
             keyboard=[[KeyboardButton(text="❌ Отмена")]],
             resize_keyboard=True
@@ -108,24 +103,16 @@ async def process_status_text(message: Message, state: FSMContext):
         return
         
     user_id = message.from_user.id
+    username = message.from_user.username
     new_status = message.text
-    await db.update_user_text_status(user_id, new_status)
+    
+    await db.update_user_text_status(user_id, username, new_status)
     await state.clear()
     await message.answer(
-        f"✅ Отлично! Твой статус обновлен:\n\"{new_status}\"",
+        f"✅ Отлично! Твой текстовый статус обновлен:\n\"{new_status}\"",
         reply_markup=main_keyboard
     )
 
-# Обработчик ЛЮБОГО другого текста в личных сообщениях
-@router.message(F.chat.type == "private", F.text)
-async def handle_private_text(message: Message):
-    await message.answer(
-        "🤔 Я не понимаю обычный текст. Используй кнопки или команды!\n"
-        "Напиши /help чтобы увидеть список команд.",
-        reply_markup=main_keyboard
-    )
-
-# Обработчик для групповых сообщений
 @router.message(F.chat.type != "private")
 async def handle_group_messages(message: Message):
     if message.entities:
@@ -134,11 +121,20 @@ async def handle_group_messages(message: Message):
                 mentioned_username = message.text[entity.offset:entity.offset + entity.length]
                 pure_username = mentioned_username[1:]
                 
+                print(f"DEBUG: Found mention @{pure_username}")
+                
                 user_data = await db.get_user_status_by_username(pure_username)
                 if user_data:
                     user_id, status_text = user_data
                     if status_text:
-                        await message.reply(
-                            f"Пользователь {mentioned_username} сейчас:\n\"{status_text}\""
-                        )
+                        await message.reply(f"Пользователь {mentioned_username} сейчас:\n\"{status_text}\"")
                 break
+
+@router.message(F.chat.type == "private", F.text)
+async def handle_private_text(message: Message):
+    if message.text not in ["📄 Установить статус", "📊 Мой статус", "🗑️ Очистить статус", "❓ Помощь"]:
+        await message.answer(
+            "🤔 Я не понимаю обычный текст. Используй кнопки или команды!\n"
+            "Напиши /help чтобы увидеть список команд.",
+            reply_markup=main_keyboard
+        )

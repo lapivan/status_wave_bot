@@ -1,3 +1,5 @@
+#main.py
+
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
@@ -22,6 +24,8 @@ async def main():
         await db.create_tables()
         print("✅ Database ready")
         
+        await db.debug_print_all_users()
+
         print("✅ Bot started successfully! Press Ctrl+C to stop.")
         await dp.start_polling(bot)
         
