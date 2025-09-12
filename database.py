@@ -57,3 +57,23 @@ async def get_user_status_by_username(username: str):
         user_data = await cursor.fetchone()  # Получаем первую найденную запись
         await cursor.close()
         return user_data  # Вернет кортеж (user_id, status) или None, если не найден
+
+async def get_user_status(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            'SELECT current_text_status FROM users WHERE user_id = ?',
+            (user_id,)
+        )
+        result = await cursor.fetchone()
+        await cursor.close()
+        return result[0] if result else None
+    
+# database.py (обновляем функцию update_user_text_status)
+
+async def update_user_text_status(user_id: int, text_status: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            'UPDATE users SET current_text_status = ? WHERE user_id = ?',
+            (text_status, user_id)
+        )
+        await db.commit()

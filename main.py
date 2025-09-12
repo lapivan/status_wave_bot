@@ -2,14 +2,17 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.fsm.storage.memory import MemoryStorage
 from handlers import router
 import database as db
 import config
 
 logging.basicConfig(level=logging.INFO)
 
+# Добавляем хранилище для FSM
+storage = MemoryStorage()
 bot = Bot(token=config.BOT_TOKEN, default=DefaultBotProperties())
-dp = Dispatcher()
+dp = Dispatcher(storage=storage)
 dp.include_router(router)
 
 async def main():
