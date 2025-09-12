@@ -9,7 +9,6 @@ import config
 
 logging.basicConfig(level=logging.INFO)
 
-# Добавляем хранилище для FSM
 storage = MemoryStorage()
 bot = Bot(token=config.BOT_TOKEN, default=DefaultBotProperties())
 dp = Dispatcher(storage=storage)

@@ -29,7 +29,7 @@ async def create_tables():
         ''')
         await db.commit()
 
-#добавление пользователя в БД
+#добавление пользователя
 async def add_user(user_id: int, username: str):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
@@ -49,14 +49,14 @@ async def update_user_text_status(user_id: int, text_status: str):
 
 async def get_user_status_by_username(username: str):
     async with aiosqlite.connect(DB_NAME) as db:
-        # Ищем user_id и статус пользователя с таким username
+        # ищем user_id и статус пользователя с таким username
         cursor = await db.execute(
             'SELECT user_id, current_text_status FROM users WHERE username = ?',
             (username,)
         )
-        user_data = await cursor.fetchone()  # Получаем первую найденную запись
+        user_data = await cursor.fetchone()  # получаем первую найденную запись
         await cursor.close()
-        return user_data  # Вернет кортеж (user_id, status) или None, если не найден
+        return user_data  # вернет кортеж (user_id, status) или None
 
 async def get_user_status(user_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -67,8 +67,6 @@ async def get_user_status(user_id: int):
         result = await cursor.fetchone()
         await cursor.close()
         return result[0] if result else None
-    
-# database.py (обновляем функцию update_user_text_status)
 
 async def update_user_text_status(user_id: int, text_status: str):
     async with aiosqlite.connect(DB_NAME) as db:

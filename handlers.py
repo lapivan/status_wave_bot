@@ -1,7 +1,7 @@
 # handlers.py
 
 from aiogram import Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -9,21 +9,34 @@ import database as db
 
 router = Router()
 
-# Создаем состояния (статусы) для FSM
 class UserState(StatesGroup):
-    waiting_for_status = State()  # Состояние ожидания текста статуса
+    waiting_for_status = State()
 
-# Создаем клавиатуру с командами в ОДИН столбец
+# Reply-клавиатура с командами (простой вариант)
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="/set_text")],
-        [KeyboardButton(text="/my_status")],
-        [KeyboardButton(text="/clear_status")],
-        [KeyboardButton(text="/help")]
+        [KeyboardButton(text="📄 Установить статус")],
+        [KeyboardButton(text="📊 Мой статус")],
+        [KeyboardButton(text="🗑️ Очистить статус")],
+        [KeyboardButton(text="❓ Помощь")]
     ],
     resize_keyboard=True,
-    input_field_placeholder="Выбери команду..."
+    input_field_placeholder="Выбери действие..."
 )
+
+# Обработчик текста кнопок
+@router.message(F.text.in_(["📄 Установить статус", "📊 Мой статус", "🗑️ Очистить статус", "❓ Помощь"]))
+async def handle_button_text(message: Message, state: FSMContext):
+    text = message.text
+    
+    if text == "📄 Установить статус":
+        await cmd_set_text(message, state)
+    elif text == "📊 Мой статус":
+        await cmd_my_status(message)
+    elif text == "🗑️ Очистить статус":
+        await cmd_clear_status(message)
+    elif text == "❓ Помощь":
+        await cmd_help(message)
 
 # Обработчик команды /start
 @router.message(Command("start"))
@@ -36,15 +49,15 @@ async def cmd_start(message: Message):
         "Привет! Я StatusWave Bot 🤖\n"
         "Я помогу тебе устанавливать крутые статусы, которые будут автоматически отвечать твоим друзьям.\n\n"
         "📋 Доступные команды:\n"
-        "/set_text - Установить текстовый статус\n"
-        "/my_status - Посмотреть текущий статус\n"
-        "/clear_status - Удалить текущий статус\n"
-        "/help - Помощь и инструкция\n\n"
-        "Выбери команду или напиши ее:",
+        "📄 Установить статус\n"
+        "📊 Мой статус\n"
+        "🗑️ Очистить статус\n"
+        "❓ Помощь\n\n"
+        "Выбери действие:",
         reply_markup=main_keyboard
     )
 
-# Обработчик команды /help
+# Остальные обработчики остаются без изменений...
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     help_text = (
@@ -62,7 +75,6 @@ async def cmd_help(message: Message):
     )
     await message.answer(help_text, reply_markup=main_keyboard)
 
-# Обработчик команды /my_status
 @router.message(Command("my_status"))
 async def cmd_my_status(message: Message):
     user_id = message.from_user.id
@@ -72,14 +84,12 @@ async def cmd_my_status(message: Message):
     else:
         await message.answer("❌ У тебя еще нет статуса. Используй /set_text чтобы установить его.", reply_markup=main_keyboard)
 
-# Обработчик команды /clear_status
 @router.message(Command("clear_status"))
 async def cmd_clear_status(message: Message):
     user_id = message.from_user.id
-    await db.update_user_text_status(user_id, None)  # Устанавливаем статус в None
+    await db.update_user_text_status(user_id, None)
     await message.answer("✅ Твой статус успешно удален!", reply_markup=main_keyboard)
 
-# Обработчик команды /set_text - переводим в состояние ожидания статуса
 @router.message(Command("set_text"))
 async def cmd_set_text(message: Message, state: FSMContext):
     await message.answer(
@@ -91,7 +101,6 @@ async def cmd_set_text(message: Message, state: FSMContext):
     )
     await state.set_state(UserState.waiting_for_status)
 
-# Обработчик состояния ожидания статуса
 @router.message(UserState.waiting_for_status, F.text)
 async def process_status_text(message: Message, state: FSMContext):
     if message.text.lower() in ["отмена", "❌ отмена", "cancel"]:
@@ -108,26 +117,24 @@ async def process_status_text(message: Message, state: FSMContext):
         reply_markup=main_keyboard
     )
 
-# Обработчик ЛЮБОГО текста в ЛИЧНЫХ сообщениях (не в группах!)
+# Обработчик ЛЮБОГО другого текста в личных сообщениях
 @router.message(F.chat.type == "private", F.text)
 async def handle_private_text(message: Message):
     await message.answer(
-        "🤔 Я не понимаю обычный текст. Используй команды!\n"
+        "🤔 Я не понимаю обычный текст. Используй кнопки или команды!\n"
         "Напиши /help чтобы увидеть список команд.",
         reply_markup=main_keyboard
     )
 
-# Обработчик для групповых сообщений с упоминаниями (ВАЖНО: этот обработчик должен быть выше!)
+# Обработчик для групповых сообщений
 @router.message(F.chat.type != "private")
 async def handle_group_messages(message: Message):
-    # Проверяем, есть ли упоминания в сообщении
     if message.entities:
         for entity in message.entities:
             if entity.type == "mention":
                 mentioned_username = message.text[entity.offset:entity.offset + entity.length]
-                pure_username = mentioned_username[1:]  # Убираем '@'
+                pure_username = mentioned_username[1:]
                 
-                # Ищем пользователя в БД по username
                 user_data = await db.get_user_status_by_username(pure_username)
                 if user_data:
                     user_id, status_text = user_data
@@ -135,6 +142,4 @@ async def handle_group_messages(message: Message):
                         await message.reply(
                             f"Пользователь {mentioned_username} сейчас:\n\"{status_text}\""
                         )
-                    else:
-                        await message.reply(f"{mentioned_username} не установил статус.")
-                break  # Обрабатываем только первое упоминание
+                break
